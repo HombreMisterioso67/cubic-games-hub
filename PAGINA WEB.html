@@ -2,16 +2,17 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>Cubic Games Hub | Studio Pro</title>
+    <title>Cubic Games Hub | Final Pro</title>
     <style>
         body { font-family: 'Courier New', monospace; background: #0e0e0e; color: #00ff41; margin: 0; }
         nav { background: #1a1a1a; padding: 15px; display: flex; gap: 20px; border-bottom: 3px solid #00ff41; }
         .seccion { padding: 20px; display: none; } .active { display: block; }
         .card { background: #1a1a1a; padding: 15px; border: 1px solid #333; margin-bottom: 20px; border-radius: 8px; }
         .media-grid { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 10px; }
-        .media-thumb { width: 80px; height: 80px; object-fit: cover; cursor: pointer; background: #000; border: 1px solid #00ff41; }
-        .avatar { width: 100px; height: 100px; border: 2px solid #00ff41; background-size: cover; background-position: center; cursor: pointer; }
+        .media-thumb { width: 80px; height: 80px; object-fit: cover; cursor: pointer; border: 1px solid #00ff41; }
+        .avatar { width: 100px; height: 100px; border: 2px solid #00ff41; background-size: cover; background-position: center; }
         .btn { background: #00ff41; border: none; padding: 5px 10px; cursor: pointer; color: black; font-weight: bold; margin-top: 5px; }
+        .user-link { color: #fff; text-decoration: underline; cursor: pointer; }
         #modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.98); z-index: 1000; flex-direction: column; align-items: center; justify-content: center; }
         .nav-arrow { position: absolute; top: 50%; font-size: 50px; color: white; cursor: pointer; user-select: none; }
     </style>
@@ -39,27 +40,32 @@
     <div id="perfil" class="seccion">
         <h1 id="profile-name">Perfil</h1>
         <div id="avatar-display" class="avatar"></div>
+        <p id="profile-level"></p>
+        <button class="btn" onclick="seguir()">SEGUIR</button>
+        <hr>
         <input type="file" onchange="subirAvatar(event)">
-        <input type="text" id="nombreUsuario" placeholder="Tu nombre" oninput="guardarPerfil()">
+        <input type="text" id="nombreUsuario" oninput="guardarPerfil()">
     </div>
 
     <div id="subir" class="seccion">
-        <h1>Publicar (Hasta 11 archivos)</h1>
+        <h1>Publicar Álbum</h1>
         <input type="text" id="titulo" placeholder="Título"><br><br>
         <input type="file" id="archivo" multiple accept="image/*,video/*"><br><br>
         <button onclick="publicar()">PUBLICAR ÁLBUM</button>
     </div>
 
     <script>
-        // Si hay error al leer, reiniciamos la estructura básica
-        let db = JSON.parse(localStorage.getItem('cubicDB') || '{"nombre":"Noah","avatar":"","projects":[]}');
-        
-        // CORRECCIÓN: Si tienes proyectos antiguos, les agregamos la lista de comentarios vacía
-        if(db.projects) {
-            db.projects.forEach(p => { if(!p.comentarios) p.comentarios = []; });
-        }
-
+        let db = JSON.parse(localStorage.getItem('cubicDB') || '{"nombre":"Noah","avatar":"","seguidores":0,"projects":[]}');
         let currentPIdx = 0, currentMIdx = 0;
+
+        function getLevel(s) {
+            if(s >= 1000) return "LEYENDA";
+            if(s >= 100) return "HÉROE";
+            if(s >= 50) return "EXPERIENCIA";
+            if(s >= 10) return "PRINCIPIANTE";
+            if(s >= 1) return "STICK";
+            return "NUEVO";
+        }
 
         function seccion(id) {
             document.querySelectorAll('.seccion').forEach(s => s.classList.remove('active'));
@@ -86,26 +92,29 @@
         }
 
         async function publicar() {
-            const fileInput = document.getElementById('archivo');
-            const files = Array.from(fileInput.files);
-            if(files.length === 0) return alert("Selecciona archivos");
-            
+            const files = Array.from(document.getElementById('archivo').files);
             const mediaData = await Promise.all(files.map(f => new Promise(res => {
                 const r = new FileReader();
                 r.onload = (e) => res({ src: e.target.result, type: f.type.startsWith('video') ? 'video' : 'image' });
                 r.readAsDataURL(f);
             })));
 
-            db.projects.push({ id: Date.now(), titulo: document.getElementById('titulo').value, media: mediaData, likes: 0, comentarios: [] });
+            db.projects.push({ 
+                id: Date.now(), 
+                titulo: document.getElementById('titulo').value, 
+                autor: db.nombre, 
+                media: mediaData, 
+                likes: 0, 
+                comentarios: [] 
+            });
             guardarYRender();
             seccion('inicio');
         }
 
         function render() {
-            const feed = document.getElementById('feed');
-            feed.innerHTML = db.projects.map((p, pIdx) => `
+            document.getElementById('feed').innerHTML = db.projects.map((p, pIdx) => `
                 <div class="card">
-                    <h3>${p.titulo}</h3>
+                    <h3>${p.titulo} <span class="user-link" onclick="seccion('perfil')">(${p.autor})</span></h3>
                     <div class="media-grid">
                         ${p.media.map((m, mIdx) => `<img class="media-thumb" src="${m.src}" onclick="verMedia(${pIdx}, ${mIdx})">`).join('')}
                     </div>
@@ -116,6 +125,7 @@
                 </div>
             `).join('');
             document.getElementById('profile-name').innerText = db.nombre;
+            document.getElementById('profile-level').innerText = `Nivel: ${getLevel(db.seguidores)} | Seguidores: ${db.seguidores}`;
         }
 
         function agregarComentario(idx) {
@@ -123,13 +133,14 @@
             if(txt) { db.projects[idx].comentarios.push(txt); guardarYRender(); }
         }
 
+        function seguir() { db.seguidores++; guardarYRender(); }
         function guardarYRender() { localStorage.setItem('cubicDB', JSON.stringify(db)); render(); }
         function like(idx) { db.projects[idx].likes++; guardarYRender(); }
         function borrar(idx) { db.projects.splice(idx, 1); guardarYRender(); }
-        function guardarPerfil() { db.nombre = document.getElementById('nombreUsuario').value; localStorage.setItem('cubicDB', JSON.stringify(db)); }
+        function guardarPerfil() { db.nombre = document.getElementById('nombreUsuario').value; guardarYRender(); }
         function subirAvatar(e) {
             const r = new FileReader();
-            r.onload = (ev) => { db.avatar = ev.target.result; document.getElementById('avatar-display').style.backgroundImage = `url(${ev.target.result})`; localStorage.setItem('cubicDB', JSON.stringify(db)); };
+            r.onload = (ev) => { db.avatar = ev.target.result; document.getElementById('avatar-display').style.backgroundImage = `url(${ev.target.result})`; guardarYRender(); };
             r.readAsDataURL(e.target.files[0]);
         }
 
