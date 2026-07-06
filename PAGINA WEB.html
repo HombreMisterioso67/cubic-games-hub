@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Cubic Games Hub | Studio Pro</title>
+    <style>
+        body { font-family: 'Courier New', monospace; background: #0e0e0e; color: #00ff41; margin: 0; }
+        nav { background: #1a1a1a; padding: 15px; display: flex; gap: 20px; border-bottom: 3px solid #00ff41; }
+        .seccion { padding: 20px; display: none; } .active { display: block; }
+        .card { background: #1a1a1a; padding: 15px; border: 1px solid #333; margin-bottom: 20px; border-radius: 8px; }
+        .media-grid { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 10px; }
+        .media-thumb { width: 80px; height: 80px; object-fit: cover; cursor: pointer; background: #000; border: 1px solid #00ff41; }
+        .avatar { width: 100px; height: 100px; border: 2px solid #00ff41; background-size: cover; background-position: center; cursor: pointer; }
+        .btn { background: #00ff41; border: none; padding: 5px 10px; cursor: pointer; color: black; font-weight: bold; margin-top: 5px; }
+        #modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.98); z-index: 1000; flex-direction: column; align-items: center; justify-content: center; }
+        .nav-arrow { position: absolute; top: 50%; font-size: 50px; color: white; cursor: pointer; user-select: none; }
+    </style>
+</head>
+<body>
+
+    <nav>
+        <button onclick="seccion('inicio')">INICIO</button>
+        <button onclick="seccion('perfil')">PERFIL</button>
+        <button onclick="seccion('subir')">SUBIR</button>
+    </nav>
+
+    <div id="modal">
+        <span class="nav-arrow" style="left: 20px;" onclick="cambiarMedia(-1)">❮</span>
+        <div id="modal-content"></div>
+        <span class="nav-arrow" style="right: 20px;" onclick="cambiarMedia(1)">❯</span>
+        <button class="btn" style="position:absolute; top:20px;" onclick="document.getElementById('modal').style.display='none'">CERRAR</button>
+    </div>
+
+    <div id="inicio" class="seccion active">
+        <h1>Feed Principal</h1>
+        <div id="feed"></div>
+    </div>
+
+    <div id="perfil" class="seccion">
+        <h1 id="profile-name">Perfil</h1>
+        <div id="avatar-display" class="avatar"></div>
+        <input type="file" onchange="subirAvatar(event)">
+        <input type="text" id="nombreUsuario" placeholder="Tu nombre" oninput="guardarPerfil()">
+    </div>
+
+    <div id="subir" class="seccion">
+        <h1>Publicar (Hasta 11 archivos)</h1>
+        <input type="text" id="titulo" placeholder="Título"><br><br>
+        <input type="file" id="archivo" multiple accept="image/*,video/*"><br><br>
+        <button onclick="publicar()">PUBLICAR ÁLBUM</button>
+    </div>
+
+    <script>
+        // Si hay error al leer, reiniciamos la estructura básica
+        let db = JSON.parse(localStorage.getItem('cubicDB') || '{"nombre":"Noah","avatar":"","projects":[]}');
+        
+        // CORRECCIÓN: Si tienes proyectos antiguos, les agregamos la lista de comentarios vacía
+        if(db.projects) {
+            db.projects.forEach(p => { if(!p.comentarios) p.comentarios = []; });
+        }
+
+        let currentPIdx = 0, currentMIdx = 0;
+
+        function seccion(id) {
+            document.querySelectorAll('.seccion').forEach(s => s.classList.remove('active'));
+            document.getElementById(id).classList.add('active');
+        }
+
+        function verMedia(pIdx, mIdx) {
+            currentPIdx = pIdx; currentMIdx = mIdx;
+            document.getElementById('modal').style.display = 'flex';
+            mostrarEnModal();
+        }
+
+        function mostrarEnModal() {
+            const m = db.projects[currentPIdx].media[currentMIdx];
+            document.getElementById('modal-content').innerHTML = m.type === 'video' ? 
+                `<video controls src="${m.src}" style="max-width:90vw; max-height:80vh"></video>` : 
+                `<img src="${m.src}" style="max-width:90vw; max-height:80vh">`;
+        }
+
+        function cambiarMedia(dir) {
+            const media = db.projects[currentPIdx].media;
+            currentMIdx = (currentMIdx + dir + media.length) % media.length;
+            mostrarEnModal();
+        }
+
+        async function publicar() {
+            const fileInput = document.getElementById('archivo');
+            const files = Array.from(fileInput.files);
+            if(files.length === 0) return alert("Selecciona archivos");
+            
+            const mediaData = await Promise.all(files.map(f => new Promise(res => {
+                const r = new FileReader();
+                r.onload = (e) => res({ src: e.target.result, type: f.type.startsWith('video') ? 'video' : 'image' });
+                r.readAsDataURL(f);
+            })));
+
+            db.projects.push({ id: Date.now(), titulo: document.getElementById('titulo').value, media: mediaData, likes: 0, comentarios: [] });
+            guardarYRender();
+            seccion('inicio');
+        }
+
+        function render() {
+            const feed = document.getElementById('feed');
+            feed.innerHTML = db.projects.map((p, pIdx) => `
+                <div class="card">
+                    <h3>${p.titulo}</h3>
+                    <div class="media-grid">
+                        ${p.media.map((m, mIdx) => `<img class="media-thumb" src="${m.src}" onclick="verMedia(${pIdx}, ${mIdx})">`).join('')}
+                    </div>
+                    <button class="btn" onclick="like(${pIdx})">❤️ ${p.likes}</button>
+                    <button class="btn" onclick="agregarComentario(${pIdx})">💬 Comentar</button>
+                    <button class="btn" style="background:#ff4141" onclick="borrar(${pIdx})">BORRAR</button>
+                    <div>${(p.comentarios || []).map(c => `<p style="font-size:0.7em">• ${c}</p>`).join('')}</div>
+                </div>
+            `).join('');
+            document.getElementById('profile-name').innerText = db.nombre;
+        }
+
+        function agregarComentario(idx) {
+            const txt = prompt("Comenta:");
+            if(txt) { db.projects[idx].comentarios.push(txt); guardarYRender(); }
+        }
+
+        function guardarYRender() { localStorage.setItem('cubicDB', JSON.stringify(db)); render(); }
+        function like(idx) { db.projects[idx].likes++; guardarYRender(); }
+        function borrar(idx) { db.projects.splice(idx, 1); guardarYRender(); }
+        function guardarPerfil() { db.nombre = document.getElementById('nombreUsuario').value; localStorage.setItem('cubicDB', JSON.stringify(db)); }
+        function subirAvatar(e) {
+            const r = new FileReader();
+            r.onload = (ev) => { db.avatar = ev.target.result; document.getElementById('avatar-display').style.backgroundImage = `url(${ev.target.result})`; localStorage.setItem('cubicDB', JSON.stringify(db)); };
+            r.readAsDataURL(e.target.files[0]);
+        }
+
+        document.getElementById('nombreUsuario').value = db.nombre;
+        if(db.avatar) document.getElementById('avatar-display').style.backgroundImage = `url(${db.avatar})`;
+        render();
+    </script>
+</body>
+</html>
